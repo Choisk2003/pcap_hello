@@ -2,8 +2,10 @@
 #include <stdint.h>
 #include <arpa/inet.h>
 #include <pcap.h>
+#include <string.h>
 #include "protocol/all.h"
 #include "packet.h"
+#include "http.h"
 
 void usage()
 {
@@ -59,7 +61,48 @@ int main(int argc, char *argv[])
 			printIp(ip->ip_src);
 			printf("IP DST");
 			printIp(ip->ip_dst);
-			if (ip->ip_p == 6)
+
+			if (ip->ip_p == 1)
+			{
+
+				const icmp_header *icmp = (icmp_header *)(packet + packetIndex);
+				packetIndex += sizeof(icmp_header);
+				uint32_t icmp_size;
+
+				if (icmp->icmp_type == 0)
+				{
+					printf("ICMP TYPE: %d (ping reply)\n", icmp->icmp_type);
+					printIcmpCode(icmp);
+					printf("ICMP CHECKSUM: %X\n", ntohs(icmp->icmp_chSum));
+					const icmp_iden_seq *icmp_ = (icmp_iden_seq *)(packet + packetIndex);
+					packetIndex += sizeof(icmp_iden_seq);
+					printIdenSeq(icmp_);
+					icmp_size = (ntohs(ip->ip_len) - (sizeof(ip_header) + sizeof(icmp_header) + sizeof(icmp_iden_seq)));
+				}
+				else if (icmp->icmp_type == 8)
+				{
+					printf("ICMP TYPE: %d (ping request)\n", icmp->icmp_type);
+					printIcmpCode(icmp);
+					printf("ICMP CHECKSUM: %X\n", ntohs(icmp->icmp_chSum));
+					const icmp_iden_seq *icmp_ = (icmp_iden_seq *)(packet + packetIndex);
+					packetIndex += sizeof(icmp_iden_seq);
+					printIdenSeq(icmp_);
+					icmp_size = (ntohs(ip->ip_len) - (sizeof(ip_header) + sizeof(icmp_header) + sizeof(icmp_iden_seq)));
+				}
+				else
+				{
+					printf("ICMP TYPE: %d\n", icmp->icmp_type);
+					printIcmpCode(icmp);
+					icmp_size = (ntohs(ip->ip_len) - (sizeof(ip_header) + sizeof(icmp_header)));
+				}
+				const u_char *data = packet + packetIndex;
+				printf("ICMP DATA SIZE: %d\n", icmp_size);
+				if (icmp_size > 0)
+				{
+					printData(icmp_size, data);
+				}
+			}
+			else if (ip->ip_p == 6)
 			{
 
 				const tcp_header *tcp = (tcp_header *)(packet + packetIndex);
@@ -72,6 +115,9 @@ int main(int argc, char *argv[])
 				const u_char *data = packet + packetIndex;
 				if (tcp_size > 0)
 				{
+					if(checkHttp(data)){
+						printf("%s\n",data);
+					}
 					printData(tcp_size, data);
 				}
 			}
